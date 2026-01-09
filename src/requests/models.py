@@ -653,6 +653,7 @@ class Response:
         "cookies",
         "elapsed",
         "request",
+        "traffic",
     ]
 
     def __init__(self):
@@ -701,6 +702,12 @@ class Response:
         #: The :class:`PreparedRequest <PreparedRequest>` object to which this
         #: is a response.
         self.request = None
+
+        #: Network traffic information for this request.
+        #: A :class:`NetworkTraffic <NetworkTraffic>` object containing upload
+        #: and download byte counts.
+        from .structures import NetworkTraffic
+        self.traffic = NetworkTraffic()
 
     def __enter__(self):
         return self

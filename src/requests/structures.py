@@ -97,3 +97,38 @@ class LookupDict(dict):
 
     def get(self, key, default=None):
         return self.__dict__.get(key, default)
+
+
+class NetworkTraffic:
+    """Network traffic information for HTTP requests.
+    
+    Tracks the number of bytes uploaded (sent) and downloaded (received)
+    during an HTTP request.
+    
+    :param upload: Number of bytes uploaded (sent to server)
+    :param download: Number of bytes downloaded (received from server)
+    """
+
+    def __init__(self, upload=0, download=0):
+        self.upload = upload
+        self.download = download
+
+    def __repr__(self):
+        return f"NetworkTraffic(upload={self.upload}, download={self.download})"
+
+    def __add__(self, other):
+        """Add two NetworkTraffic objects together."""
+        if not isinstance(other, NetworkTraffic):
+            return NotImplemented
+        return NetworkTraffic(
+            upload=self.upload + other.upload,
+            download=self.download + other.download
+        )
+
+    def __iadd__(self, other):
+        """Add another NetworkTraffic object in-place."""
+        if not isinstance(other, NetworkTraffic):
+            return NotImplemented
+        self.upload += other.upload
+        self.download += other.download
+        return self
