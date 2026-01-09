@@ -44,7 +44,7 @@ from .exceptions import (
     SSLError,
 )
 from .models import Response
-from .structures import CaseInsensitiveDict
+from .structures import CaseInsensitiveDict, NetworkTraffic
 from .utils import (
     DEFAULT_CA_BUNDLE_PATH,
     extract_zipped_paths,
@@ -71,6 +71,78 @@ DEFAULT_POOLBLOCK = False
 DEFAULT_POOLSIZE = 10
 DEFAULT_RETRIES = 0
 DEFAULT_POOL_TIMEOUT = None
+
+
+def _calculate_request_size(request, url):
+    """Calculate the size of an HTTP request in bytes.
+    
+    :param request: The PreparedRequest object
+    :param url: The actual URL being sent (may differ from request.url for proxies)
+    :return: Size in bytes
+    """
+    # Start with request line: "METHOD /path HTTP/1.1\r\n"
+    # Use the URL path from the actual url being sent
+    request_line = f"{request.method} {url} HTTP/1.1\r\n"
+    size = len(request_line.encode('latin-1'))
+    
+    # Add headers size
+    if request.headers:
+        for name, value in request.headers.items():
+            # Each header: "Name: Value\r\n"
+            header_line = f"{name}: {value}\r\n"
+            size += len(header_line.encode('latin-1'))
+    
+    # Add blank line after headers
+    size += 2  # \r\n
+    
+    # Add body size
+    if request.body is not None:
+        if isinstance(request.body, bytes):
+            size += len(request.body)
+        elif isinstance(request.body, str):
+            size += len(request.body.encode('utf-8'))
+        else:
+            # For file-like objects or other iterables, try to get length
+            try:
+                size += len(request.body)
+            except (TypeError, AttributeError):
+                # If we can't determine the size, use Content-Length header if available
+                content_length = request.headers.get('Content-Length')
+                if content_length:
+                    size += int(content_length)
+    
+    return size
+
+
+def _calculate_response_size(resp):
+    """Calculate the size of an HTTP response in bytes.
+    
+    :param resp: The urllib3 response object
+    :return: Size in bytes
+    """
+    # Start with status line: "HTTP/1.1 200 OK\r\n"
+    status_line = f"HTTP/1.1 {resp.status} {resp.reason}\r\n"
+    size = len(status_line.encode('latin-1'))
+    
+    # Add headers size
+    if resp.headers:
+        for name, value in resp.headers.items():
+            # Each header: "Name: Value\r\n"
+            header_line = f"{name}: {value}\r\n"
+            size += len(header_line.encode('latin-1'))
+    
+    # Add blank line after headers
+    size += 2  # \r\n
+    
+    # Add body size from Content-Length header if available
+    content_length = resp.headers.get('Content-Length')
+    if content_length:
+        try:
+            size += int(content_length)
+        except (ValueError, TypeError):
+            pass
+    
+    return size
 
 
 def _urllib3_request_context(
@@ -333,7 +405,7 @@ class HTTPAdapter(BaseAdapter):
                     f"Could not find the TLS key file, invalid path: {conn.key_file}"
                 )
 
-    def build_response(self, req, resp):
+    def build_response(self, req, resp, sent_url=None):
         """Builds a :class:`Response <requests.Response>` object from a urllib3
         response. This should not be called from user code, and is only exposed
         for use when subclassing the
@@ -341,6 +413,7 @@ class HTTPAdapter(BaseAdapter):
 
         :param req: The :class:`PreparedRequest <PreparedRequest>` used to generate the response.
         :param resp: The urllib3 response object.
+        :param sent_url: The actual URL that was sent (for traffic calculation).
         :rtype: requests.Response
         """
         response = Response()
@@ -367,6 +440,15 @@ class HTTPAdapter(BaseAdapter):
         # Give the Response some context.
         response.request = req
         response.connection = self
+
+        # Calculate network traffic
+        upload_bytes = _calculate_request_size(req, sent_url or req.url)
+        download_bytes = _calculate_response_size(resp)
+        response.traffic = NetworkTraffic(upload=upload_bytes, download=download_bytes)
+
+        # Update global total_traffic
+        import requests
+        requests.total_traffic += response.traffic
 
         return response
 
@@ -693,4 +775,4 @@ class HTTPAdapter(BaseAdapter):
             else:
                 raise
 
-        return self.build_response(request, resp)
+        return self.build_response(request, resp, sent_url=url)

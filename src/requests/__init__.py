@@ -177,6 +177,10 @@ from .exceptions import (
 from .models import PreparedRequest, Request, Response
 from .sessions import Session, session
 from .status_codes import codes
+from .structures import NetworkTraffic
+
+# Global variable to track total network traffic across all requests
+total_traffic = NetworkTraffic()
 
 logging.getLogger(__name__).addHandler(NullHandler())
 
