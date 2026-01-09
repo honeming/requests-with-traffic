@@ -124,8 +124,17 @@ def _calculate_response_size(resp):
     :param resp: The urllib3 response object
     :return: Size in bytes
     """
-    # Start with status line: "HTTP/1.1 200 OK\r\n"
-    status_line = f"HTTP/1.1 {resp.status} {resp.reason}\r\n"
+    # Start with status line: "HTTP/x.x 200 OK\r\n"
+    # Try to get the HTTP version from the response, default to HTTP/1.1
+    http_version = getattr(resp, 'version', 11)  # urllib3 uses 11 for HTTP/1.1, 10 for HTTP/1.0
+    if http_version == 10:
+        version_string = "HTTP/1.0"
+    elif http_version == 20:
+        version_string = "HTTP/2"
+    else:
+        version_string = "HTTP/1.1"
+    
+    status_line = f"{version_string} {resp.status} {resp.reason}\r\n"
     size = len(status_line.encode('latin-1'))
     
     # Add headers size
