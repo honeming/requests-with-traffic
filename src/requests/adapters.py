@@ -109,7 +109,11 @@ def _calculate_request_size(request, url):
                 # If we can't determine the size, use Content-Length header if available
                 content_length = request.headers.get('Content-Length')
                 if content_length:
-                    size += int(content_length)
+                    try:
+                        size += int(content_length)
+                    except (ValueError, TypeError):
+                        # If Content-Length is invalid, we can't determine body size
+                        pass
     
     return size
 
@@ -140,6 +144,8 @@ def _calculate_response_size(resp):
         try:
             size += int(content_length)
         except (ValueError, TypeError):
+            # If Content-Length is invalid, we'll get inaccurate size
+            # but it's better than failing
             pass
     
     return size
@@ -446,9 +452,11 @@ class HTTPAdapter(BaseAdapter):
         download_bytes = _calculate_response_size(resp)
         response.traffic = NetworkTraffic(upload=upload_bytes, download=download_bytes)
 
-        # Update global total_traffic
-        import requests
-        requests.total_traffic += response.traffic
+        # Update global total_traffic using sys.modules to avoid circular import
+        import sys
+        if 'requests' in sys.modules:
+            requests_module = sys.modules['requests']
+            requests_module.total_traffic += response.traffic
 
         return response
 

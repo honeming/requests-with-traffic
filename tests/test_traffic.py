@@ -5,6 +5,16 @@ import requests
 from requests.structures import NetworkTraffic
 
 
+@pytest.fixture(autouse=True)
+def reset_total_traffic():
+    """Reset total_traffic before each test to ensure test isolation."""
+    original_traffic = requests.total_traffic
+    requests.total_traffic = NetworkTraffic()
+    yield
+    # Restore original value after test
+    requests.total_traffic = original_traffic
+
+
 class TestNetworkTraffic:
     """Test NetworkTraffic class functionality."""
 
@@ -68,9 +78,6 @@ class TestTrafficTracking:
 
     def test_total_traffic_tracking(self, httpbin):
         """Test that total_traffic accumulates across requests."""
-        # Reset total_traffic before test
-        requests.total_traffic = NetworkTraffic()
-        
         # Make first request
         r1 = requests.get(httpbin("get"))
         traffic_after_r1 = NetworkTraffic(
