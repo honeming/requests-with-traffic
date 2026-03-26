@@ -702,6 +702,10 @@ class Response:
         #: is a response.
         self.request = None
 
+        #: A :class:`TrafficInfo <requests.traffic.TrafficInfo>` object holding
+        #: the upload, download and total byte counts for this request/response.
+        self.traffic = None
+
     def __enter__(self):
         return self
 

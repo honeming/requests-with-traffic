@@ -15,6 +15,12 @@ from ._internal_utils import to_native_string
 from .adapters import HTTPAdapter
 from .auth import _basic_auth_str
 from .compat import Mapping, cookielib, urljoin, urlparse
+from .traffic import (
+    TrafficInfo,
+    _calculate_download_bytes,
+    _calculate_upload_bytes,
+    total_traffic,
+)
 from .cookies import (
     RequestsCookieJar,
     cookiejar_from_dict,
@@ -744,6 +750,12 @@ class Session(SessionRedirectMixin):
 
         if not stream:
             r.content
+
+        # Calculate and attach traffic info for this request/response pair.
+        upload_bytes = _calculate_upload_bytes(request)
+        download_bytes = _calculate_download_bytes(r)
+        r.traffic = TrafficInfo(upload=upload_bytes, download=download_bytes)
+        total_traffic.add(upload_bytes, download_bytes)
 
         return r
 
