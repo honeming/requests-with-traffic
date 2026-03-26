@@ -3038,3 +3038,96 @@ def test_json_decode_errors_are_serializable_deserializable():
     )
     deserialized_error = pickle.loads(pickle.dumps(json_decode_error))
     assert repr(json_decode_error) == repr(deserialized_error)
+
+
+class TestTraffic:
+    """Tests for the traffic tracking feature (r.traffic and requests.total_traffic)."""
+
+    @pytest.fixture(autouse=True)
+    def reset_total_traffic(self):
+        """Reset the global traffic accumulator before and after each test."""
+        requests.total_traffic.reset()
+        yield
+        requests.total_traffic.reset()
+
+    def test_response_has_traffic_attribute(self, httpbin):
+        r = requests.get(httpbin("get"))
+        assert r.traffic is not None
+
+    def test_traffic_upload_is_positive(self, httpbin):
+        r = requests.get(httpbin("get"))
+        assert r.traffic.upload > 0
+
+    def test_traffic_download_is_positive(self, httpbin):
+        r = requests.get(httpbin("get"))
+        assert r.traffic.download > 0
+
+    def test_traffic_total_equals_upload_plus_download(self, httpbin):
+        r = requests.get(httpbin("get"))
+        assert r.traffic.total == r.traffic.upload + r.traffic.download
+
+    def test_traffic_post_upload_includes_body(self, httpbin):
+        body = b"hello world"
+        r_no_body = requests.get(httpbin("get"))
+        r_with_body = requests.post(httpbin("post"), data=body)
+        # A POST with a body should have more upload bytes than a bodyless GET.
+        assert r_with_body.traffic.upload > r_no_body.traffic.upload
+
+    def test_traffic_info_repr(self, httpbin):
+        r = requests.get(httpbin("get"))
+        assert "TrafficInfo" in repr(r.traffic)
+        assert "upload=" in repr(r.traffic)
+        assert "download=" in repr(r.traffic)
+        assert "total=" in repr(r.traffic)
+
+    def test_total_traffic_accumulates(self, httpbin):
+        before = requests.total_traffic.total
+
+        requests.get(httpbin("get"))
+        after_one = requests.total_traffic.total
+        assert after_one > before
+
+        requests.get(httpbin("get"))
+        after_two = requests.total_traffic.total
+        assert after_two > after_one
+
+    def test_total_traffic_upload_and_download_accumulate(self, httpbin):
+        r1 = requests.get(httpbin("get"))
+        r2 = requests.get(httpbin("get"))
+        assert requests.total_traffic.upload == r1.traffic.upload + r2.traffic.upload
+        assert requests.total_traffic.download == r1.traffic.download + r2.traffic.download
+
+    def test_total_traffic_total_property(self, httpbin):
+        requests.get(httpbin("get"))
+        assert requests.total_traffic.total == (
+            requests.total_traffic.upload + requests.total_traffic.download
+        )
+
+    def test_traffic_stream_response_before_read(self, httpbin):
+        """Streaming responses should have valid upload traffic and non-negative download."""
+        r = requests.get(httpbin("get"), stream=True)
+        assert r.traffic is not None
+        assert r.traffic.upload > 0
+        # For streaming, download is estimated from Content-Length or 0 if absent
+        assert r.traffic.download >= 0
+
+    def test_traffic_stream_response_after_read(self, httpbin):
+        """Streaming response after consuming the body should have positive download bytes."""
+        r = requests.get(httpbin("get"), stream=True)
+        _ = r.content  # consume the stream
+        assert r.traffic.upload > 0
+        # Traffic was calculated before content was consumed; the estimate should
+        # be positive (Content-Length header is present from httpbin).
+        assert r.traffic.download > 0
+
+    def test_traffic_attribute_is_traffic_info_instance(self, httpbin):
+        from requests.traffic import TrafficInfo
+
+        r = requests.get(httpbin("get"))
+        assert isinstance(r.traffic, TrafficInfo)
+
+    def test_total_traffic_accessible_from_requests_module(self):
+        assert hasattr(requests, "total_traffic")
+        assert hasattr(requests.total_traffic, "upload")
+        assert hasattr(requests.total_traffic, "download")
+        assert hasattr(requests.total_traffic, "total")

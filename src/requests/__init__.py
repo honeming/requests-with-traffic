@@ -177,6 +177,7 @@ from .exceptions import (
 from .models import PreparedRequest, Request, Response
 from .sessions import Session, session
 from .status_codes import codes
+from .traffic import TrafficInfo, total_traffic
 
 logging.getLogger(__name__).addHandler(NullHandler())
 
